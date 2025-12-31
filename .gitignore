@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+
+# macOS
+.DS_Store
+
+# Builds / misc
+dist/
+build/
+
+# If you accidentally made a local python environment folder like this:
+meme-recon/
