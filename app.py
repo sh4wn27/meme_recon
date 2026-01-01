@@ -11,7 +11,6 @@ import json
 # Suppress MediaPipe verbose logging
 logging.getLogger('mediapipe').setLevel(logging.ERROR)
 
-# ---------- Helpers ----------
 def dist(a, b):
     return np.linalg.norm(a - b)
 
@@ -24,29 +23,27 @@ def extract_expression_features(pts):
     Returns a small feature vector describing expression.
     """
 
-    # A few useful landmark indices (MediaPipe Face Mesh)
-    # Mouth: left/right corners, top/bottom lip
     mouth_left  = pts[61]
     mouth_right = pts[291]
     mouth_top   = pts[13]
     mouth_bot   = pts[14]
 
-    # Eyes: top/bottom lids (approx)
+
     left_eye_top  = pts[159]
     left_eye_bot  = pts[145]
     right_eye_top = pts[386]
     right_eye_bot = pts[374]
 
-    # Eyebrows: inner/outer points (approx)
+
     left_brow = pts[105]
     right_brow = pts[334]
 
-    # Nose bridge / reference scale
+
     nose_tip = pts[1]
     chin = pts[152]
-    face_scale = dist(nose_tip, chin)  # normalize distances by face size
+    face_scale = dist(nose_tip, chin)  
 
-    # Metrics
+
     mouth_width = safe_ratio(dist(mouth_left, mouth_right), face_scale)
     mouth_open  = safe_ratio(dist(mouth_top, mouth_bot), face_scale)
 
@@ -54,15 +51,15 @@ def extract_expression_features(pts):
     right_eye_open = safe_ratio(dist(right_eye_top, right_eye_bot), face_scale)
     eye_open = (left_eye_open + right_eye_open) / 2.0
 
-    # Eyebrow height proxy: brow y relative to nose tip y (in image coords y increases downward)
+
     brow_raise = safe_ratio((nose_tip[1] - (left_brow[1] + right_brow[1]) / 2.0), face_scale)
 
-    # Feature vector: tweak/extend as you like
-    # [smile-ish width, mouth open, eye open, brow raise]
+
+
     return np.array([mouth_width, mouth_open, eye_open, brow_raise], dtype=np.float32)
 
 def load_memes(meme_dir="memes"):
-    # Map expression label -> file
+    # add ur memes
     mapping = {
         "look": "cat_look.png",
         "pondering": "cat_pondering.png",
@@ -78,7 +75,7 @@ def load_memes(meme_dir="memes"):
             memes[label] = img
     return memes
 
-# Default targets (used if no saved targets exist)
+
 DEFAULT_TARGETS = {
     "look":     np.array([0.38, 0.02, 0.03, 0.02], dtype=np.float32),
     "pondering": np.array([0.32, 0.09, 0.05, 0.05], dtype=np.float32),
@@ -95,23 +92,23 @@ def load_targets():
         try:
             with open(TARGETS_FILE, 'r') as f:
                 data = json.load(f)
-                # Handle both old format (just arrays) and new format (dicts with face/hand)
+
                 targets = {}
                 for k, v in data.items():
                     if isinstance(v, list) and len(v) > 0 and isinstance(v[0], (int, float)):
-                        # Old format: just face features array
+
                         targets[k] = {
                             'face': np.array(v, dtype=np.float32),
                             'hand_gesture': None  # No hand gesture
                         }
                     elif isinstance(v, dict):
-                        # New format: dict with face and optional hand_gesture
+
                         targets[k] = {
                             'face': np.array(v.get('face', v), dtype=np.float32),
                             'hand_gesture': v.get('hand_gesture', None)  # Can be None or a gesture string
                         }
                     else:
-                        # Fallback
+
                         targets[k] = {
                             'face': np.array(v, dtype=np.float32),
                             'hand_gesture': None
@@ -120,14 +117,14 @@ def load_targets():
                 return targets
         except Exception as e:
             print(f"Error loading targets: {e}. Using defaults.")
-            # Convert defaults to new format
+
             return {k: {'face': v, 'hand_gesture': None} for k, v in DEFAULT_TARGETS.items()}
-    # Convert defaults to new format
+
     return {k: {'face': v, 'hand_gesture': None} for k, v in DEFAULT_TARGETS.items()}
 
 def save_targets(targets):
     """Save targets to file."""
-    # Convert to JSON-serializable format
+
     data = {}
     for k, v in targets.items():
         if isinstance(v, dict):
@@ -136,7 +133,7 @@ def save_targets(targets):
                 'hand_gesture': v.get('hand_gesture', None)
             }
         else:
-            # Handle old format if needed
+
             data[k] = {
                 'face': v.tolist() if isinstance(v, np.ndarray) else v,
                 'hand_gesture': None
@@ -145,7 +142,7 @@ def save_targets(targets):
         json.dump(data, f, indent=2)
     print(f"Saved {len(targets)} expression targets to {TARGETS_FILE}")
 
-# Load targets (will use defaults if file doesn't exist)
+
 TARGETS = load_targets()
 
 def predict_label(feat, detected_gesture=None, threshold=0.08):
@@ -162,33 +159,32 @@ def predict_label(feat, detected_gesture=None, threshold=0.08):
     """
     best_label, best_score = None, 1e9
     for label, target_data in TARGETS.items():
-        # Handle both old format (just array) and new format (dict)
+
         if isinstance(target_data, dict):
             tgt_face = target_data['face']
             required_gesture = target_data.get('hand_gesture', None)
         else:
-            # Old format compatibility
+
             tgt_face = target_data
             required_gesture = None
         
-        # Calculate face match score
+
         face_score = np.linalg.norm(feat - tgt_face)
         
-        # Check if hand gesture is required and matches
+
         hand_match = True
         if required_gesture is not None:
-            # This expression requires a hand gesture
+
             if detected_gesture is None or detected_gesture != required_gesture:
-                # Hand gesture missing or doesn't match - skip this target
                 continue
             hand_match = True
         
-        # Use face score for ranking
+
         if face_score < best_score:
             best_score = face_score
             best_label = label
     
-    # Only return a match if it's close enough
+
     if best_score > threshold:
         return None, best_score
     return best_label, best_score
@@ -202,26 +198,25 @@ def overlay_meme(frame, meme_img, scale=0.35):
     new_h = int(mh * (new_w / mw))
     meme_resized = cv2.resize(meme_img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    # top-right corner
+
     x1 = w - new_w - 10
     y1 = 10
     x2 = x1 + new_w
     y2 = y1 + new_h
 
-    # bounds
+
     if x1 < 0 or y2 > h:
         return frame
 
     frame[y1:y2, x1:x2] = meme_resized
     return frame
 
-# ---------- Hand Detection Helpers ----------
+
 def draw_hand_landmarks(frame, hand_landmarks, hand_label="Left"):
     """Draw hand landmarks and connections on the frame."""
     h, w = frame.shape[:2]
     
-    # Hand landmark connections (simplified - showing key points)
-    # MediaPipe hand has 21 landmarks
+
     connections = [
         # Thumb
         (0, 1), (1, 2), (2, 3), (3, 4),
@@ -867,3 +862,6 @@ if __name__ == "__main__":
         print("To calibrate your expressions, run: python app.py calibrate")
         print("To delete all calibrations, run: python app.py clear")
         main()
+
+
+
