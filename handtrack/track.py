@@ -50,6 +50,15 @@ def is_hand_open(hand_landmarks, hand_label):
     extended_count = sum(extended) + (1 if thumb_extended else 0)
     return extended_count >= 4
 
+def swap_label_if_flipped(hand_label, frame_flipped):
+    if not frame_flipped:
+        return hand_label
+    if hand_label == "Left":
+        return "Right"
+    if hand_label == "Right":
+        return "Left"
+    return hand_label
+
 def main(camera_index=None):
 
     cap = cv2.VideoCapture(0 if camera_index is None else camera_index)
@@ -105,6 +114,7 @@ def main(camera_index=None):
             print("current frame at {}...".format(frame_count))
 
         frame = cv2.flip(frame, 1)
+        frame_flipped = True
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if has_solutions:
             results = hands.process(rgb)
@@ -113,6 +123,7 @@ def main(camera_index=None):
                     hand_label = "Hand"
                     if results.multi_handedness and idx < len(results.multi_handedness):
                         hand_label = results.multi_handedness[idx].classification[0].label
+                    hand_label = swap_label_if_flipped(hand_label, frame_flipped)
                     mp_drawing.draw_landmarks(
                         frame,
                         hand_landmarks,
@@ -136,6 +147,7 @@ def main(camera_index=None):
                     hand_label = "Hand"
                     if results.handedness and idx < len(results.handedness):
                         hand_label = results.handedness[idx][0].category_name
+                    hand_label = swap_label_if_flipped(hand_label, frame_flipped)
                     draw_hand_landmarks(frame, hand_landmarks)
                     status = "open" if is_hand_open(hand_landmarks, hand_label) else "closed"
                     cv2.putText(
@@ -173,6 +185,5 @@ if __name__ == "__main__":
         main(camera_index=idx)
     else:
         main()
-
 
 
