@@ -27,6 +27,29 @@ def draw_hand_landmarks(frame, hand_landmarks, color=(0,255,0)):
 
     return frame
 
+def is_hand_open(hand_landmarks, hand_label):
+    """
+    Basic open/closed detector using finger extension.
+    Returns True if the palm looks open.
+    """
+    # Index, middle, ring, pinky: tip vs PIP (lower y = higher on screen)
+    tips = [8, 12, 16, 20]
+    pips = [6, 10, 14, 18]
+    extended = []
+    for tip_i, pip_i in zip(tips, pips):
+        extended.append(hand_landmarks[tip_i].y < hand_landmarks[pip_i].y)
+
+    # Thumb: use x direction based on handedness
+    thumb_tip = hand_landmarks[4]
+    thumb_ip = hand_landmarks[3]
+    if hand_label == "Left":
+        thumb_extended = thumb_tip.x < thumb_ip.x
+    else:
+        thumb_extended = thumb_tip.x > thumb_ip.x
+
+    extended_count = sum(extended) + (1 if thumb_extended else 0)
+    return extended_count >= 4
+
 def main(camera_index=None):
 
     cap = cv2.VideoCapture(0 if camera_index is None else camera_index)
@@ -35,7 +58,7 @@ def main(camera_index=None):
     
     has_solutions = hasattr(mp, "solutions")
     if has_solutions:
-        mp_hands = mp.soltuions.hands
+        mp_hands = mp.solutions.hands
         mp_drawing = mp.solutions.drawing_utils
         hands = mp_hands.Hands(
             static_image_mode=False,
@@ -50,7 +73,7 @@ def main(camera_index=None):
 
         candidates = [
             os.path.join(os.path.dirname(__file__), "hand_landmarker.task"),
-            os.path.join(os.path.dirname(__file__), "..", "meme_recon", "hand_landmarker.task"),
+            os.path.join(os.path.dirname(__file__), "..", "hand_landmarker.task"),
         ]
         model_path = next((p for p in candidates if os.path.exists(p)), None)
         if model_path is None:
@@ -86,18 +109,44 @@ def main(camera_index=None):
         if has_solutions:
             results = hands.process(rgb)
             if results.multi_hand_landmarks:
-                for hand_landmarks in results.multi_hand_landmarks:
+                for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+                    hand_label = "Hand"
+                    if results.multi_handedness and idx < len(results.multi_handedness):
+                        hand_label = results.multi_handedness[idx].classification[0].label
                     mp_drawing.draw_landmarks(
                         frame,
                         hand_landmarks,
                         mp_hands.HAND_CONNECTIONS,
                     )
+                    status = "open" if is_hand_open(hand_landmarks, hand_label) else "closed"
+                    cv2.putText(
+                        frame,
+                        "{}: {}".format(hand_label, status),
+                        (10, 30 + idx * 25),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
         else:
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             results = hand_detector.detect(mp_image)
             if results.hand_landmarks:
-                for hand_landmarks in results.hand_landmarks:
+                for idx, hand_landmarks in enumerate(results.hand_landmarks):
+                    hand_label = "Hand"
+                    if results.handedness and idx < len(results.handedness):
+                        hand_label = results.handedness[idx][0].category_name
                     draw_hand_landmarks(frame, hand_landmarks)
+                    status = "open" if is_hand_open(hand_landmarks, hand_label) else "closed"
+                    cv2.putText(
+                        frame,
+                        "{}: {}".format(hand_label, status),
+                        (10, 30 + idx * 25),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 255, 255),
+                        2,
+                    )
 
         cv2.imshow("Hand Tracking - sh4wn", frame)
         key = cv2.waitKey(1) & 0xFF
@@ -124,8 +173,6 @@ if __name__ == "__main__":
         main(camera_index=idx)
     else:
         main()
-
-
 
 
 
